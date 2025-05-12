@@ -261,7 +261,7 @@ class Experiments():
                 self.sir_score = pkl.load(f)
     
     def prelim_measure_exp(self, models, data):
-        self.measures, self.rankings = {}, {}
+        self.measures = {}
         self.nlc_measures = {}
         self.mahe_measures = {}
         # self.mkni_di_measures = {}
@@ -312,14 +312,9 @@ class Experiments():
                 #    embeddings=models[key].node_emb.weight,
                 #    node_type=data['target_type'],
                 #    verbose=False)
-                
-            self.rankings[key] = sort_by_measure(measures=self.measures[key])
-            
+                            
         with open(os_path.join(self.local_results_root, 'measures.pkl'), 'wb') as f:
             pkl.dump(self.measures, f)
-            
-        with open(os_path.join(self.local_results_root, 'rankings.pkl'), 'wb') as f:
-            pkl.dump(self.rankings, f)
             
         return 
     
