@@ -137,7 +137,7 @@ def nlc(G: nx.Graph, embeddings: torch.Tensor, node_type: str = 'author', enable
     return nlc
 
 
-def mahe_node_relevancy(G: nx.Graph, embeddings: torch.Tensor, node_type: str = 'author', verbose:bool = True):
+def mahe_node_relevancy(G: nx.Graph, embeddings: torch.Tensor, node_type: str = 'author', verbose:bool = True) -> dict:
     mahe = {}
     node2index, index2node = {}, {}
     i = 0
@@ -194,19 +194,12 @@ def mkni(G: nx.Graph, embeddings: torch.Tensor, node_type: str = 'author', verbo
     
     def _indirect_influence(i): # NYI
         ii = 0
-        # TODO: The weights of the connected edges correspond 
-        # to the number of edges they form based on the 
-        # intermediate P
-        """
         for j in nx.neighbors(G, i):
             csim = cossim_matrix[node2index[i], node2index[j]].item()
             s = torch.sum([cossim_matrix[node2index[j], node2index[k]] 
-                           for k in nx.neighbors(G, j)]).item()
-            ii += (csim * np.exp(1 - nx.clustering(G, i))) / s
-        """
-        # for n, d in tqdm(G.nodes(data=True), total=G.number_of_nodes(), disable=not verbose):
-        #    if d['type'] == node_type:
-        #        cc = nx.clustering(G, n)
+                           for k in nx.neighbors(G, j) 
+                           if G.node[k]['type'] == G.node[i]['type']]).item()
+            ii += (csim * G.degree[i] * np.exp(1 - nx.clustering(G, i))) / s
 
         return ii
     
@@ -227,7 +220,6 @@ def mkni(G: nx.Graph, embeddings: torch.Tensor, node_type: str = 'author', verbo
             measure[n]  =   _normalize_influence_dict(di_measures)[n] + \
                             _normalize_influence_dict(ii_measures)[n]
     
-
     return measure
     
     

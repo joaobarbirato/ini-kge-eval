@@ -13,7 +13,7 @@ from os import path as os_path
 from tqdm import tqdm
 from typing import List
 
-from src.measures import (embedding_sim, sort_by_measure, 
+from src.measures import (embedding_sim, mkni, sort_by_measure, 
                           centrality_measure, sir_measure,
                           nlc, mahe_node_relevancy)
 
@@ -260,11 +260,11 @@ class Experiments():
             with open(os_path.join(self.data_info_root, 'sir_measure.pkl'), 'rb') as f:
                 self.sir_score = pkl.load(f)
     
-    def prelim_measure_exp(self, models, data):
+    def prelim_measure_exp(self, models: dict, data: dict):
         self.measures = {}
         self.nlc_measures = {}
         self.mahe_measures = {}
-        # self.mkni_di_measures = {}
+        self.mkni_measures = {}
         for key in (pbar := tqdm(models.keys(), 
                                 desc='setting measures and rankings', 
                                 total=len(models.keys()))):
@@ -286,11 +286,11 @@ class Experiments():
                     node_type=data['target_type'],
                     embeddings=models[key].embedding.weight, 
                     verbose=False)
-                #self.mkni_di_measures[key] = mkni(
-                #    G=data['nx'],
-                #    embeddings=models[key].embedding.weight,
-                #    node_type=data['target_type'],
-                #    verbose=False)
+                self.mkni_measures[key] = mkni(
+                   G=data['nx'],
+                   embeddings=models[key].embedding.weight,
+                   node_type=data['target_type'],
+                   verbose=False)
             else:
                 self.measures[key] = embedding_sim(
                     G=data['nx'],
@@ -307,16 +307,67 @@ class Experiments():
                     node_type=data['target_type'],
                     embeddings=models[key].node_emb.weight,
                     verbose=False)
-                #self.mkni_di_measures[key] = mkni(
-                #    G=data['nx'],
-                #    embeddings=models[key].node_emb.weight,
-                #    node_type=data['target_type'],
-                #    verbose=False)
+                self.mkni_measures[key] = mkni(
+                   G=data['nx'],
+                   embeddings=models[key].node_emb.weight,
+                   node_type=data['target_type'],
+                   verbose=False)
                             
         with open(os_path.join(self.local_results_root, 'measures.pkl'), 'wb') as f:
-            pkl.dump(self.measures, f)
+            pkl.dump({
+                'embedding_sim': self.measures,
+                'nlc': self.nlc_measures,
+                'mahe': self.mahe_measures,
+                'mkni': self.mkni_measures
+            }, f)
             
         return 
+    
+    def concat_exp(self, models: dict, data: dict):
+        concat_embeddings = {}
+        
+        self.concat_embedding_sim = {}
+        self.concat_nlc = {}
+        self.concat_mahe = {}
+        self.concat_mkni = {}
+        
+        concat_embeddings['mp2v_concat'] = torch.concat(
+            [models[key].embedding.weight for key in models.keys() if 'mp2v_' in key],
+            axis=1)
+        
+        concat_embeddings['kge_concat'] = torch.concat(
+            [models[key].node_emb.weight for key in models.keys() if 'mp2v_' not in key],
+            axis=1)
+        
+        for concat_emb_name in concat_embeddings.keys():
+            self.concat_embedding_sim = embedding_sim(
+                G=data['nx'],
+                embeddings=concat_embeddings[concat_emb_name],
+                node_type=data['target_type'],
+                verbose=False)
+            self.concat_nlc = nlc(
+                G=data['nx'],
+                embeddings=concat_embeddings[concat_emb_name],
+                node_type=['target_type'],
+                verbose=False)
+            self.concat_mahe = mahe_node_relevancy(
+                G=data['nx'],
+                embeddings=concat_embeddings[concat_emb_name],
+                node_type=['target_type'],
+                verbose=False)
+            self.concat_mkni = mkni(
+                G=data['nx'],
+                embeddings=concat_embeddings[concat_emb_name],
+                node_type=data['target_type'],
+                verbose=False)
+        
+        with open(os_path.join(self.local_results_root, 'concat_measures.pkl'), 'wb') as f:
+            pkl.dump({
+                'embedding_sim': self.concat_embedding_sim,
+                'nlc': self.concat_nlc,
+                'mahe': self.concat_mahe,
+                'mkni': self.concat_mkni
+            }, f)
     
     def nlc_exp(self, data_name: str, data: dict, df_rank: pd.DataFrame):
         if not os_path.isfile(os_path.join(self.data_info_root, 'sir_nlc_simulation.pkl')):
@@ -366,29 +417,29 @@ class Experiments():
             with open(os_path.join(self.data_info_root, 'sir_mahe_simulation.pkl'), 'rb') as f:
                 sir_mahe_sim_data = pkl.load(f)
 
-    # def mkni_di_exp(self, data_name: str, data: dict, df_rank: pd.DataFrame):
-    #     if not os_path.isfile(os_path.join(self.data_info_root, 'sir_mkni_di_simulation.pkl')):
-    #         print(f"processing {data_name} SIR MKNI DI sims")
-    #         sir_mkni_di_sim_data = {}
-    #         for mkni_col in df_rank.columns:
-    #             if 'mkni_di_' in mkni_col:
-    #                 sir_mkni_di_sim_data[mkni_col.replace('mkni_di_', '')] = run_diffusion_simulations(
-    #                     num_simulations=100,
-    #                     diffusion_model=sir_model,
-    #                     verbose=False,
-    #                     #sir args
-    #                     G=data['nx'],
-    #                     seed_nodes=df_rank[mkni_col].head(args.seed_set_size).tolist(),
-    #                     prob=args.inf_rate,
-    #                     recovery_rate=args.rec_rate,
-    #                     max_iter=args.max_iter
-    #                 )
-    #         with open(os_path.join(self.data_info_root, 'sir_mkni_di_simulation.pkl'), 'wb') as f:
-    #             pkl.dump(sir_mkni_di_sim_data, f)
-    #     else:
-    #         print(f"loading {data_name} SIR MKNI DI sims")
-    #         with open(os_path.join(self.data_info_root, 'sir_mkni_di_simulation.pkl'), 'rb') as f:
-    #             sir_mkni_di_sim_data = pkl.load(f)
+    def mkni_exp(self, data_name: str, data: dict, df_rank: pd.DataFrame):
+        if not os_path.isfile(os_path.join(self.data_info_root, 'sir_mkni_simulation.pkl')):
+            print(f"processing {data_name} SIR MKNI DI sims")
+            sir_mkni_sim_data = {}
+            for mkni_col in df_rank.columns:
+                if 'mkni_di_' in mkni_col:
+                    sir_mkni_sim_data[mkni_col.replace('mkni_di_', '')] = run_diffusion_simulations(
+                        num_simulations=100,
+                        diffusion_model=sir_model,
+                        verbose=False,
+                        #sir args
+                        G=data['nx'],
+                        seed_nodes=df_rank[mkni_col].head(args.seed_set_size).tolist(),
+                        prob=args.inf_rate,
+                        recovery_rate=args.rec_rate,
+                        max_iter=args.max_iter
+                    )
+            with open(os_path.join(self.data_info_root, 'sir_mkni_simulation.pkl'), 'wb') as f:
+                pkl.dump(sir_mkni_sim_data, f)
+        else:
+            print(f"loading {data_name} SIR MKNI DI sims")
+            with open(os_path.join(self.data_info_root, 'sir_mkni_simulation.pkl'), 'rb') as f:
+                sir_mkni_sim_data = pkl.load(f)
     
     def run(self, datasets: List[str] = get_data_names()):
         for data_name in datasets:
@@ -407,7 +458,8 @@ class Experiments():
             self._get_baseline_sir(data_name=data_name, data=data)
 
             # get measures
-            self.prelim_measure_exp(models=models, data=data)                        
+            self.prelim_measure_exp(models=models, data=data)
+            self.concat_exp(models=models, data=data)
             
             df_T_indexes = list(self.measures.keys()) + \
                 list(map(lambda x: f"nlc_{x}", self.nlc_measures.keys())) + \
@@ -430,6 +482,7 @@ class Experiments():
             # single measure
             self.nlc_exp(data_name=data_name, data=data, df_rank=df_rank)
             self.mahe_exp(data_name=data_name, data=data, df_rank=df_rank)
+            self.mkni_exp(data_name=data_name, data=data, df_rank=df_rank)
             
 
 if __name__ == "__main__":
