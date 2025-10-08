@@ -13,11 +13,11 @@ from os import path as os_path
 from tqdm import tqdm
 from typing import List
 
-from src.measures import (embedding_sim, sort_by_measure, 
+from src.measures import (embedding_sim, meta_sir_measure, sort_by_measure, 
                           centrality_measure, sir_measure,
                           nlc, mahe_node_relevancy)
 
-from src.diffusion import (sir_model, run_diffusion_simulations)
+from src.diffusion import (meta_sir_model, sir_model, run_diffusion_simulations)
 from src.kge import (setup_kge, train_kge, get_kge_models)
 from src.rwe import (setup_metapath2vec, train_mp2vec)
 from src.utils import save_df
@@ -248,6 +248,17 @@ class Experiments():
             print(f"loading {data_name} SIR")
             with open(os_path.join(self.data_info_root, 'sir_measure.pkl'), 'rb') as f:
                 self.sir_score = pkl.load(f)
+
+    def _get_baseline_meta_sir(self, data: dict, data_name: str):
+        if not os_path.isfile(os_path.join(self.data_info_root, 'sir_measure.pkl')):
+            print(f"processing {data_name} metaSIR")
+            self.sir_score = meta_sir_measure(data['raw'], data['target_type'])
+            with open(os_path.join(self.data_info_root, 'sir_,measure.pkl'), 'wb') as f:
+                pkl.dump(self.sir_score, f)
+        else:
+            print(f"loading {data_name} metaSIR")
+            with open(os_path.join(self.data_info_root, 'sir_measure.pkl'), 'rb') as f:
+                self.sir_score = pkl.load(f)
                 
     def _get_baseline_ic(self, data: dict, data_name: str):
         if not os_path.isfile(os_path.join(self.data_info_root, 'sir_measure.pkl')):
@@ -365,6 +376,54 @@ class Experiments():
             print(f"loading {data_name} SIR MAHE REL sims")
             with open(os_path.join(self.data_info_root, 'sir_mahe_simulation.pkl'), 'rb') as f:
                 sir_mahe_sim_data = pkl.load(f)
+    
+    def meta_nlc_exp(self, data_name: str, data: dict, df_rank: pd.DataFrame):
+        if not os_path.isfile(os_path.join(self.data_info_root, 'sir_nlc_simulation.pkl')):
+            print(f"processing {data_name} SIR NLC sims")
+            sir_nlc_sim_data = {}
+            for nlc_col in df_rank.columns:
+                if 'nlc_' in nlc_col:
+                    sir_nlc_sim_data[nlc_col.replace('nlc_', '')] = run_diffusion_simulations(
+                        num_simulations=1000,
+                        diffusion_model=meta_sir_model,
+                        verbose=False,
+                        #sir args
+                        G=data['raw'],
+                        seed_nodes=df_rank[nlc_col].head(args.seed_set_size).tolist(),
+                        prob=args.inf_rate,
+                        recovery_rate=args.rec_rate,
+                        max_iter=args.max_iter
+                    )
+            with open(os_path.join(self.data_info_root, 'sir_nlc_simulation.pkl'), 'wb') as f:
+                pkl.dump(sir_nlc_sim_data, f)
+        else:
+            print(f"loading {data_name} SIR NLC sims")
+            with open(os_path.join(self.data_info_root, 'sir_nlc_simulation.pkl'), 'rb') as f:
+                sir_nlc_sim_data = pkl.load(f)
+    
+    def meta_mahe_exp(self, data_name: str, data: dict, df_rank: pd.DataFrame):
+        if not os_path.isfile(os_path.join(self.data_info_root, 'sir_mahe_simulation.pkl')):
+            print(f"processing {data_name} SIR MAHE REL sims")
+            sir_mahe_sim_data = {}
+            for mahe_col in df_rank.columns:
+                if 'mahe_' in mahe_col:
+                    sir_mahe_sim_data[mahe_col.replace('mahe_', '')] = run_diffusion_simulations(
+                        num_simulations=1000,
+                        diffusion_model=meta_sir_model,
+                        verbose=False,
+                        #sir args
+                        G=data['raw'],
+                        seed_nodes=df_rank[mahe_col].head(args.seed_set_size).tolist(),
+                        prob=args.inf_rate,
+                        recovery_rate=args.rec_rate,
+                        max_iter=args.max_iter
+                    )
+            with open(os_path.join(self.data_info_root, 'sir_mahe_simulation.pkl'), 'wb') as f:
+                pkl.dump(sir_mahe_sim_data, f)
+        else:
+            print(f"loading {data_name} SIR MAHE REL sims")
+            with open(os_path.join(self.data_info_root, 'sir_mahe_simulation.pkl'), 'rb') as f:
+                sir_mahe_sim_data = pkl.load(f)
 
     # def mkni_di_exp(self, data_name: str, data: dict, df_rank: pd.DataFrame):
     #     if not os_path.isfile(os_path.join(self.data_info_root, 'sir_mkni_di_simulation.pkl')):
@@ -404,7 +463,7 @@ class Experiments():
             self._get_baseline_centralities(data_name=data_name, data=data)
 
             # SIR
-            self._get_baseline_sir(data_name=data_name, data=data)
+            self._get_baseline_meta_sir(data_name=data_name, data=data)
 
             # get measures
             self.prelim_measure_exp(models=models, data=data)                        
@@ -428,8 +487,10 @@ class Experiments():
             save_df(df_rank, filepath=self.local_results_root, filename='df_rank')
             
             # single measure
-            self.nlc_exp(data_name=data_name, data=data, df_rank=df_rank)
-            self.mahe_exp(data_name=data_name, data=data, df_rank=df_rank)
+            # self.nlc_exp(data_name=data_name, data=data, df_rank=df_rank)
+            # self.mahe_exp(data_name=data_name, data=data, df_rank=df_rank)
+            self.meta_nlc_exp(data_name=data_name, data=data, df_rank=df_rank)
+            self.meta_mahe_exp(data_name=data_name, data=data, df_rank=df_rank)
             
 
 if __name__ == "__main__":
