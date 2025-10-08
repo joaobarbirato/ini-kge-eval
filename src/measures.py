@@ -1,13 +1,38 @@
 from pandas import Series
-from typing import List
+from typing import List, Tuple
 from joblib import Parallel, delayed
 from functools import partial
 import torch
+import torch_geometric
+from torch_geometric.utils import to_networkx
+from torch_geometric.data import Data
+
 import networkx as nx
 import numpy as np
 from tqdm import tqdm
 
-from .diffusion import run_diffusion_simulations, sir_model
+from src.utils import unipartite_metapath_projection
+
+from .diffusion import meta_sir_model, run_diffusion_simulations, sir_model
+
+
+def path_count_centrality(data: Data, metapaths: List[List], **kwargs) -> dict:
+    def _update_count(main: dict, update: dict):
+        for key in update.keys():
+            if key in main:
+                main[key] += update[key]
+            else:
+                main[key] = update[key]
+
+
+    ugraphs = unipartite_metapath_projection(data, metapaths, **kwargs)
+    count = {}
+    for ugraph in ugraphs.values():
+        ugraph: Data
+        nx_ugraph = to_networkx(data=ugraph, to_undirected=True)
+        _update_count(count, {node:deg for node, deg in nx_ugraph.degree()})
+
+    return count
 
 
 def monotonicity(R: Series) -> float:
@@ -52,7 +77,7 @@ def sort_by_measure(measures: dict):
                            reverse=True)))
 
 
-def sir_measure(G: nx.graph, 
+def sir_measure(G: nx.Graph, 
                 node_type: str, 
                 prob: float = 0.01, 
                 recovery_rate: float = 0.005, 
@@ -64,6 +89,37 @@ def sir_measure(G: nx.graph,
         run_diffusion_simulations,
         num_simulations=num_simulations,
         diffusion_model=sir_model,
+        verbose=False,
+        n_jobs=-1,
+        # kwargs
+        G=G,
+        prob=prob,
+        recovery_rate=recovery_rate
+    )
+    def foo(n):
+        measure[n] = _run(seed_nodes=[n])[0]
+        
+    with Parallel(n_jobs=16, require='sharedmem') as para:
+        para(delayed(foo)(n) for n, d
+             in tqdm(G.nodes(data=True),
+                     total=G.number_of_nodes(),
+                     desc="sir measure")
+             if d['type'] == node_type)
+    return measure
+
+
+def meta_sir_measure(G: Data, 
+                node_type: str, 
+                prob: float = 0.01, 
+                recovery_rate: float = 0.005, 
+                num_simulations: int = 1000):
+    
+    measure = {}
+    # avg dni per node
+    _run = partial(
+        run_diffusion_simulations,
+        num_simulations=num_simulations,
+        diffusion_model=meta_sir_model,
         verbose=False,
         n_jobs=-1,
         # kwargs

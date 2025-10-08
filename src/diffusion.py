@@ -1,8 +1,11 @@
 import random
 import numpy as np
+import networkx as nx
 
 from tqdm import tqdm
 from typing import List
+
+from src.utils import Data, unipartite_metapath_projection, to_networkx
 
 
 def independent_cascade(G, seed_nodes, prob=0.2, max_iter=10, simulation: bool = True):
@@ -152,7 +155,7 @@ def sis_model(G, seed_nodes, prob=0.2, recovery_rate=0.1, max_iter=10, simulatio
 
 def sir_model(G, seed_nodes, prob=0.2, recovery_rate=0.1, max_iter=10, simulation: bool = True):
     """
-    Simulates the SI Model for diffusion.
+    Simulates the SIR Model for diffusion.
     
     Parameters:
     - G: NetworkX graph
@@ -195,9 +198,50 @@ def sir_model(G, seed_nodes, prob=0.2, recovery_rate=0.1, max_iter=10, simulatio
     return activated_nodes, activated_nodes_per_iter
 
 
+def meta_sir_model(data: Data, 
+                   seed_nodes, 
+                   metapath: List[str],
+                   prob=0.2, 
+                   recovery_rate=0.1, 
+                   max_iter=10, 
+                   simulation: bool = True):
+    
+    G = to_networkx(unipartite_metapath_projection(data, [metapath])[0])
+
+    activated_nodes = set(seed_nodes)  # Initial activated nodes
+    recovered_nodes = set()
+    # newly_activated = set(seed_nodes)  # Start with the seed nodes
+    
+    activated_nodes_per_iter = []
+    
+    # Step 3: Simulate the diffusion process
+    for _ in range(max_iter):
+        newly_activated = set()
+        newly_recovered_nodes = set()
+        # Try to activate neighbors of newly activated nodes
+        for node in activated_nodes:            
+            for neighbor in G.neighbors(node):
+                if neighbor not in activated_nodes and random.random() < prob:  # Infection probability
+                    newly_activated.add(neighbor)
+                    
+            if random.random() < recovery_rate:
+                newly_recovered_nodes.add(node)
+
+        if len(activated_nodes) == len(G.nodes):  # Stop if all nodes are infected
+            break
+
+        activated_nodes |= newly_activated
+        recovered_nodes |= newly_recovered_nodes
+        
+        activated_nodes -= recovered_nodes
+        activated_nodes_per_iter.append(len(activated_nodes))
+    
+    return activated_nodes, activated_nodes_per_iter
+
+
 def run_diffusion_simulations(
         num_simulations, 
-        diffusion_model: callable = independent_cascade, 
+        diffusion_model: callable = independent_cascade,  # type: ignore
         n_jobs: int = -1,
         verbose=True, 
         **kwargs):
