@@ -2,8 +2,12 @@
 **/*.pyc
 **/.ipynb_checkpoints/
 
+data
+models
+results
 data/
 models/
+results/
 checkpoints/
 *.pth
 *.pt
